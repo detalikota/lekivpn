@@ -41,6 +41,7 @@ def log_user_interaction(user_id, username, action, additional_info=""):
         log_message += f" - {additional_info}"
     interaction_logger.info(log_message)
 # Configure YooKassa
+SHOP_ID = 0
 Configuration.account_id = SHOP_ID
 Configuration.secret_key = YUKASSA_API
 # Initialize bot
