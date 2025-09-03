@@ -1,6 +1,6 @@
 import sys
 sys.path.append('/opt/marzban')
-from cred import USERNAME, PASSWORD, API_TOKEN, CHANNEL_ID, SHOP_ID, YUKASSA_API
+from cred import USERNAME, PASSWORD, API_TOKEN, CHANNEL_ID #, SHOP_ID, YUKASSA_API
 import telebot
 from telebot import types
 import requests
