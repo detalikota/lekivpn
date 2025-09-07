@@ -777,22 +777,24 @@ def is_valid_ip(ip_str):
 # Fix the webhook handler to properly handle YooKassa notifications
 @app.route('/yookassa-webhook', methods=['POST'])
 def yookassa_webhook():
-    client_ip = request.remote_addr
-    # Log webhook access
-    interaction_logger.info(f"WEBHOOK_ACCESS - IP: {client_ip}")
     """
     Receive YooKassa webhook, record it, and immediately apply the subscription.
     """
     try:
         client_ip = request.remote_addr
         logger.info(f"Webhook from IP: {client_ip}")
+        # Log webhook access
+        interaction_logger.info(f"WEBHOOK_ACCESS - IP: {client_ip}")
+        
         # 1) Parse JSON
         try:
             event = request.get_json(force=True)
         except Exception as je:
             logger.error(f"Invalid JSON payload: {je}")
             return "Bad Request", 400
+
         logger.info(f"Webhook payload: {event}")
+
         # 2) Persist raw webhook for auditing
         try:
             import sqlite3
@@ -814,35 +816,43 @@ def yookassa_webhook():
             conn_w.close()
         except Exception as db_e:
             logger.error(f"Failed to store webhook log: {db_e}")
+
         # 3) Only care about payment.succeeded
         if event.get("event") != "payment.succeeded":
             return "OK", 200
+
         obj = event.get("object", {})
         payment_id = obj.get("id")
         if not payment_id:
             logger.error("No payment ID in webhook")
             return "Bad Request", 400
+
         # 4) Extract metadata
         meta = obj.get("metadata", {})
         user_id = meta.get("user_id")
         if not user_id:
             logger.error(f"No user_id in metadata for payment {payment_id}")
             return "Bad Request", 400
+
         # 5) Decide if it's eternal, yearly, or 30-day
         raw_amt = obj.get("amount", {}).get("value", "0")
         try:
             amt = float(raw_amt)
         except (ValueError, TypeError):
             amt = 0.0
+
         is_eternal = (amt >= 990.0)
         is_yearly = (amt >= 499.0 and amt < 990.0)
+        
         logger.info(f"Webhook payment {payment_id} for user {user_id}, amount={amt}, eternal={is_eternal}, yearly={is_yearly}")
+
         # 6) Upsert into payments DB
         import sqlite3
         conn = sqlite3.connect('/opt/marzban/payments.db')
         cursor = conn.cursor()
         cursor.execute("SELECT status, subscription_extended FROM payments WHERE payment_id = ?", (payment_id,))
         existing = cursor.fetchone()
+        
         if existing:
             if existing[0] == 'processed' and existing[1] == 1:
                 logger.info(f"{payment_id} already processed. Skipping.")
@@ -855,8 +865,10 @@ def yookassa_webhook():
                 (payment_id, user_id, raw_amt, 'webhook_received')
             )
         conn.commit()
+
         # 7) Actually apply the subscription
         success = apply_subscription_extension(user_id, payment_id)
+
         # 8) Update final status - but don't send duplicate messages
         if success:
             cursor.execute(
@@ -865,7 +877,6 @@ def yookassa_webhook():
                 (payment_id,)
             )
             conn.commit()
-            # Don't send additional messages here - they're already sent in apply_subscription_extension
             logger.info(f"Webhook processing completed for payment {payment_id}, user {user_id}")
         else:
             cursor.execute(
@@ -874,9 +885,13 @@ def yookassa_webhook():
                 (payment_id,)
             )
             conn.commit()
+        
         conn.close()
         return "OK", 200
+        
     except Exception as e:
+        # Ensure client_ip is defined for error logging
+        client_ip = getattr(request, 'remote_addr', 'unknown')
         interaction_logger.info(f"WEBHOOK_ERROR - IP: {client_ip} - Error: {str(e)[:100]}")
         logger.error(f"Unhandled exception in webhook handler: {e}", exc_info=True)
         return "Internal Server Error", 500
