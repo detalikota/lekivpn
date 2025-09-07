@@ -1,6 +1,6 @@
 import sys
 sys.path.append('/opt/marzban')
-from cred import USERNAME, PASSWORD, API_TOKEN, CHANNEL_ID #, SHOP_ID, YUKASSA_API
+from cred import USERNAME, PASSWORD, API_TOKEN, CHANNEL_ID, SHOP_ID, YUKASSA_API
 import telebot
 from telebot import types
 import requests
@@ -41,8 +41,6 @@ def log_user_interaction(user_id, username, action, additional_info=""):
         log_message += f" - {additional_info}"
     interaction_logger.info(log_message)
 # Configure YooKassa
-SHOP_ID = 0
-YUKASSA_API = 0
 Configuration.account_id = SHOP_ID
 Configuration.secret_key = YUKASSA_API
 # Initialize bot
