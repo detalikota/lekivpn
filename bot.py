@@ -1070,7 +1070,7 @@ def start(message):
     inline_markup.add(get_config_button)
     inline_markup.add(select_device_button)
     inline_markup.add(payment_button)
-    inline_markup.ad(check_days_button)
+    inline_markup.add(check_days_button)
     inline_markup.add(referral_button)
     inline_markup.add(help_button_inline)
 
