@@ -48,7 +48,7 @@ bot = telebot.TeleBot(API_TOKEN)
 # Marzban settings
 MARZBAN_URL = "https://el-vpn.ru"
 #MARZBAN_URL = "localhost:8000"
-CHANNEL_LINK = "https://t.me/VPN_OBLAKO"
+CHANNEL_LINK = "https://t.me/el_vpn_channel"
 # Thread-safe notification tracker
 app = Flask(__name__)
 YOOKASSA_IP_RANGES = [
@@ -99,7 +99,7 @@ def generate_referral_link(user_id):
     """Generate a referral link for a user."""
     import base64
     encoded_id = base64.b64encode(str(user_id).encode()).decode()
-    return f"https://t.me/VPN_OBLAKO_BOT?start=ref_{encoded_id}"
+    return f"https://t.me/ell_vpn_bot?start=ref_{encoded_id}"
 def decode_referral_code(code):
     """Decode referral code to get user ID."""
     try:
@@ -339,7 +339,7 @@ def create_payment(user_id, amount="50.00"):
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": f"https://t.me/VPN_OBLAKO_BOT"
+                "return_url": f"https://t.me/ell_vpn_bot"
             },
             "capture": True,
             "description": f"Оплата подписки доступа к сервису для пользователя с ID: {user_id}",
@@ -1700,7 +1700,7 @@ def callback_handler(call):
             markup.add(contact_us_button)
             markup.add(close_button)
             troubleshooting_text = (
-                "🚀 Решение типичных проблем в Oblako VPN!\n"
+                "🚀 Решение типичных проблем в L-VPN!\n"
                 "Если VPN не подключается или работает нестабильно, попробуй эти простые шаги. Часто это решает вопрос! 🔧\n\n"
                 "📜 Шаги по устранению неисправностей:\n"
                 "🔄 Перезапусти приложение: Полностью закрой наше VPN-приложение (свайпни вверх или через настройки), затем открой заново.\n"
