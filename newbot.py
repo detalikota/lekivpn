@@ -15,6 +15,7 @@ import logging
 import threading
 from flask import Flask, request
 from notification_store import notification_store
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,6 +32,7 @@ interaction_formatter = logging.Formatter('%(asctime)s - USER:%(message)s')
 interaction_handler.setFormatter(interaction_formatter)
 interaction_logger.addHandler(interaction_handler)
 interaction_logger.setLevel(logging.INFO)
+
 def log_user_interaction(user_id, username, action, additional_info=""):
     """Log user interactions with detailed information."""
     user_info = f"{user_id}"
@@ -40,17 +42,21 @@ def log_user_interaction(user_id, username, action, additional_info=""):
     if additional_info:
         log_message += f" - {additional_info}"
     interaction_logger.info(log_message)
+
 # Configure YooKassa
 Configuration.account_id = SHOP_ID
 Configuration.secret_key = YUKASSA_API
+
 # Initialize bot
 bot = telebot.TeleBot(API_TOKEN)
+
 # Marzban settings
 MARZBAN_URL = "https://el-vpn.ru"
-#MARZBAN_URL = "localhost:8000"
 CHANNEL_LINK = "https://t.me/el_vpn_channel"
+
 # Thread-safe notification tracker
 app = Flask(__name__)
+
 YOOKASSA_IP_RANGES = [
     '185.71.76.0/27',
     '185.71.77.0/27',
@@ -60,13 +66,13 @@ YOOKASSA_IP_RANGES = [
     '77.75.154.128/25',
     '2a02:5180::/32'
 ]
+
 def setup_referral_database():
     """Set up the referral database."""
     import sqlite3
     try:
         conn = sqlite3.connect('/var/lib/marzban/referral.sqlite3')
         cursor = conn.cursor()
-        # Referrals table to track who referred whom
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS referrals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +83,6 @@ def setup_referral_database():
             UNIQUE(referred_id)
         )
         ''')
-        # Rewards table to track referral rewards
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS rewards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,40 +100,42 @@ def setup_referral_database():
     except Exception as e:
         logger.error(f"Error setting up referral database: {e}")
         return False
+
 def generate_referral_link(user_id):
     """Generate a referral link for a user."""
     import base64
     encoded_id = base64.b64encode(str(user_id).encode()).decode()
     return f"https://t.me/ell_vpn_bot?start=ref_{encoded_id}"
+
 def decode_referral_code(code):
     """Decode referral code to get user ID."""
     try:
         import base64
         if code.startswith('ref_'):
-            encoded_id = code[4:]  # Remove 'ref_' prefix
+            encoded_id = code[4:]
             decoded_id = base64.b64decode(encoded_id.encode()).decode()
             return decoded_id
         return None
     except Exception:
         return None
+
 def add_referral(referrer_id, referred_id):
     """Add a referral relationship only if it's a new user."""
     import sqlite3
     try:
-        # First check if this user already exists in Marzban
         existing_config = get_user_config(str(referred_id))
         if "error" not in existing_config or "User not found" not in existing_config.get("error", ""):
             logger.info(f"User {referred_id} already exists in Marzban, not counting as referral")
-            return False  # User already exists, don't count as referral
+            return False
+
         conn = sqlite3.connect('/var/lib/marzban/referral.sqlite3')
         cursor = conn.cursor()
-        # Check if user was already referred
         cursor.execute("SELECT id FROM referrals WHERE referred_id = ?", (referred_id,))
         if cursor.fetchone():
             conn.close()
             logger.info(f"User {referred_id} already has a referrer")
-            return False  # Already referred
-        # Add referral only for new users
+            return False
+
         cursor.execute(
             "INSERT INTO referrals (referrer_id, referred_id) VALUES (?, ?)",
             (referrer_id, referred_id)
@@ -140,6 +147,7 @@ def add_referral(referrer_id, referred_id):
     except Exception as e:
         logger.error(f"Error adding referral: {e}")
         return False
+
 def get_referral_stats(user_id):
     """Get referral statistics for a user."""
     import sqlite3
@@ -161,21 +169,21 @@ def get_referral_stats(user_id):
     except Exception as e:
         logger.error(f"Error getting referral stats: {e}")
         return 0, 0
+
 def mark_referral_as_paid(referred_id):
     """Mark a referral as paid and check for rewards."""
     import sqlite3
     try:
         conn = sqlite3.connect('/var/lib/marzban/referral.sqlite3')
         cursor = conn.cursor()
-        # Mark as paid
         cursor.execute(
             "UPDATE referrals SET paid_status = 1 WHERE referred_id = ? AND paid_status = 0",
             (referred_id,)
         )
         if cursor.rowcount == 0:
             conn.close()
-            return None  # No referral found or already paid
-        # Get referrer
+            return None
+
         cursor.execute(
             "SELECT referrer_id FROM referrals WHERE referred_id = ?",
             (referred_id,)
@@ -185,7 +193,7 @@ def mark_referral_as_paid(referred_id):
             conn.close()
             return None
         referrer_id = result[0]
-        # Get current paid referrals count
+
         cursor.execute(
             "SELECT COUNT(*) FROM referrals WHERE referrer_id = ? AND paid_status = 1",
             (referrer_id,)
@@ -193,23 +201,23 @@ def mark_referral_as_paid(referred_id):
         paid_count = cursor.fetchone()[0]
         conn.commit()
         conn.close()
-        # Apply 15 days reward for each paid referral
+
         reward = apply_referral_reward(referrer_id, 15, f"referral_{paid_count}")
-        # Apply bonus rewards for milestones (in addition to the 15 days)
         bonus_reward = None
         if paid_count == 10:
-            bonus_reward = apply_referral_reward(referrer_id, 165, "ten_referrals_bonus")  # 5.5 months additional (180-15=165)
+            bonus_reward = apply_referral_reward(referrer_id, 165, "ten_referrals_bonus")
         elif paid_count == 20:
-            bonus_reward = apply_referral_reward(referrer_id, 715, "twenty_referrals_bonus")  # 2 years additional (730-15=715)
+            bonus_reward = apply_referral_reward(referrer_id, 715, "twenty_referrals_bonus")
+
         return {"referrer_id": referrer_id, "paid_count": paid_count, "reward": reward, "bonus_reward": bonus_reward}
     except Exception as e:
         logger.error(f"Error marking referral as paid: {e}")
         return None
+
 def apply_referral_reward(user_id, days, reward_type):
     """Apply referral reward to user."""
     import sqlite3
     try:
-        # Add reward to database
         conn = sqlite3.connect('/var/lib/marzban/referral.sqlite3')
         cursor = conn.cursor()
         cursor.execute(
@@ -218,17 +226,16 @@ def apply_referral_reward(user_id, days, reward_type):
         )
         conn.commit()
         conn.close()
-        # Get current user config
+
         user_config = get_user_config(str(user_id))
         if "error" in user_config:
             logger.error(f"Cannot get user config for reward: {user_id}")
             return False
-        # Check if user already has eternal subscription
+
         current_expire = user_config.get("expire", 0) or 0
         user_status = user_config.get("status", "")
         if current_expire == 0 and user_status == "active":
             logger.info(f"User {user_id} already has eternal subscription, skipping reward application")
-            # Still log the reward but don't change the subscription
             try:
                 bot.send_message(
                     str(user_id),
@@ -238,13 +245,13 @@ def apply_referral_reward(user_id, days, reward_type):
             except Exception:
                 pass
             return True
-        # Calculate new expiration for non-eternal users
+
         current_time = int(time.time())
         if current_expire > current_time:
             new_expire = current_expire + (days * 24 * 3600)
         else:
             new_expire = current_time + (days * 24 * 3600)
-        # Update user expiration
+
         token = get_marzban_token()
         url = f"{MARZBAN_URL}/api/user/{user_id}"
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -259,13 +266,13 @@ def apply_referral_reward(user_id, days, reward_type):
     except Exception as e:
         logger.error(f"Error applying referral reward: {e}")
         return False
+
 def track_referral_user_creation(user_id):
     """Track when a referred user actually gets created in Marzban."""
     import sqlite3
     try:
         conn = sqlite3.connect('/var/lib/marzban/referral.sqlite3')
         cursor = conn.cursor()
-        # Check if this user has a pending referral
         cursor.execute(
             "SELECT referrer_id FROM referrals WHERE referred_id = ? AND paid_status = 0",
             (user_id,)
@@ -274,7 +281,6 @@ def track_referral_user_creation(user_id):
         if result:
             referrer_id = result[0]
             logger.info(f"Referred user {user_id} was created in Marzban, referrer: {referrer_id}")
-            # Send notification to referrer
             try:
                 bot.send_message(
                     referrer_id,
@@ -286,14 +292,13 @@ def track_referral_user_creation(user_id):
         conn.close()
     except Exception as e:
         logger.error(f"Error tracking referral user creation: {e}")
-# Improved payment tracker with retries
+
 def setup_payment_tracker():
     """Set up a database to track payments."""
     import sqlite3
     try:
         conn = sqlite3.connect('/opt/marzban/payments.db')
         cursor = conn.cursor()
-        # Create table if it doesn't exist
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS payments (
             payment_id TEXT PRIMARY KEY,
@@ -306,13 +311,12 @@ def setup_payment_tracker():
             last_error TEXT
         )
         ''')
-        # Check if the subscription_extended column exists, and add it if not
         cursor.execute("PRAGMA table_info(payments)")
         columns = [column[1] for column in cursor.fetchall()]
         if 'subscription_extended' not in columns:
             cursor.execute('ALTER TABLE payments ADD COLUMN subscription_extended INTEGER DEFAULT 0')
             logger.info("Added subscription_extended column to payments table")
-        # Create a separate webhook log table if it doesn't exist already
+
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS webhook_logs (
             id INTEGER PRIMARY KEY,
@@ -328,6 +332,7 @@ def setup_payment_tracker():
     except Exception as e:
         logger.error(f"Error setting up payment tracker: {e}", exc_info=True)
         return False
+
 def create_payment(user_id, amount="99.00"):
     """Create a payment for subscription."""
     try:
@@ -348,7 +353,7 @@ def create_payment(user_id, amount="99.00"):
                 "amount": amount
             }
         }, idempotence_key)
-        # Ensure payment is stored in database
+
         try:
             import sqlite3
             conn = sqlite3.connect('/opt/marzban/payments.db')
@@ -362,6 +367,7 @@ def create_payment(user_id, amount="99.00"):
             logger.info(f"Created payment {payment.id} for user {user_id} and stored in database")
         except Exception as db_error:
             logger.error(f"Error storing payment in database: {db_error}")
+
         return {
             "confirmation_url": payment.confirmation.confirmation_url,
             "payment_id": payment.id
@@ -369,17 +375,14 @@ def create_payment(user_id, amount="99.00"):
     except Exception as e:
         logger.error(f"Error creating payment for user {user_id}: {e}")
         raise Exception(f"Payment creation error: {str(e)}")
+
 def apply_subscription_extension(user_id, payment_id):
-    """
-    Apply the subscription extension (30 days, 365 days, or eternal) to the user
-    after a successful payment.
-    """
+    """Apply the subscription extension based on payment amount."""
     logger.info(f"Applying subscription extension for user {user_id}, payment {payment_id}")
     import sqlite3
     import requests
     from time import time
 
-    # 1) Read payment amount from our DB
     conn = sqlite3.connect('/opt/marzban/payments.db')
     cursor = conn.cursor()
     cursor.execute("SELECT amount FROM payments WHERE payment_id = ?", (payment_id,))
@@ -396,12 +399,35 @@ def apply_subscription_extension(user_id, payment_id):
         logger.error(f"Invalid amount stored for payment {payment_id}: {raw_amount}")
         amount_value = 0.0
 
-    # 2) Decide subscription type based on amount
-    is_eternal = (amount_value >= 990.0)
-    is_yearly = (amount_value >= 499.0 and amount_value < 990.0)
-    logger.info(f"Payment {payment_id} amount={amount_value}, is_eternal={is_eternal}, is_yearly={is_yearly}")
+    # Determine subscription type based on amount
+    if amount_value >= 990.0:
+        is_eternal = True
+        is_yearly = False
+        days_to_add = 0
+        subscription_type = "eternal"
+    elif amount_value >= 599.0:
+        is_eternal = False
+        is_yearly = True
+        days_to_add =  365
+        subscription_type = "yearly"
+    elif amount_value >= 299.0:
+        is_eternal = False
+        is_yearly = False
+        days_to_add = 180  # 6 months
+        subscription_type = "6_months"
+    elif amount_value >= 199.0:
+        is_eternal = False
+        is_yearly = False
+        days_to_add = 90   # 3 months
+        subscription_type = "3_months"
+    else:
+        is_eternal = False
+        is_yearly = False
+        days_to_add = 30   # 1 month
+        subscription_type = "monthly"
 
-    # 3) Ensure user is active (if disabled/expired, force-activate first)
+    logger.info(f"Payment {payment_id} amount={amount_value}, type={subscription_type}, days={days_to_add}")
+
     user_str = str(user_id)
     user_conf = get_user_config(user_str)
     if "error" in user_conf:
@@ -423,13 +449,11 @@ def apply_subscription_extension(user_id, payment_id):
             conn.close()
             return False
 
-    # 4) Call Marzban API to update expire/status
     token = get_marzban_token()
     url = f"{MARZBAN_URL}/api/user/{user_str}"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     if is_eternal:
-        # Eternal subscription: set expire to None (or 0 if your API prefers)
         logger.info(f"Setting eternal subscription for user {user_id}")
         payload = {"expire": 0, "status": "active"}
         try:
@@ -443,7 +467,6 @@ def apply_subscription_extension(user_id, payment_id):
             conn.close()
             return False
 
-        # Verify
         final_conf = get_user_config(user_str)
         if final_conf.get("status") == "active" and final_conf.get("expire") in (None, 0):
             logger.info(f"Eternal subscription successfully set for {user_id}")
@@ -455,202 +478,107 @@ def apply_subscription_extension(user_id, payment_id):
                 bot.send_message(user_str, "✅ Оплата прошла успешно! Вам установлена вечная подписка.")
             except Exception as e:
                 logger.error(f"Error sending eternal subscription notification: {e}")
-            # Check for referral rewards
+            
             referral_result = mark_referral_as_paid(user_id)
             if referral_result:
-                referrer_id = referral_result["referrer_id"]
-                paid_count = referral_result["paid_count"]
-                try:
-                    if paid_count == 1:
-                        bot.send_message(referrer_id,
-                            "🎉 Поздравляем! Ваш реферал оплатил подписку!\n"
-                            "🎁 Вы получили 15 дней бесплатного VPN!")
-                    elif paid_count == 10:
-                        bot.send_message(referrer_id,
-                            "🏆 Невероятно! У вас уже 10 оплаченных рефералов!\n"
-                            "🎁 Вы получили 15 дней + бонус 6 месяцев бесплатного VPN!")
-                    elif paid_count == 20:
-                        bot.send_message(referrer_id,
-                            "👑 Легенда! У вас 20 оплаченных рефералов!\n"
-                            "🎁 Вы получили 15 дней + бонус 2 года бесплатного VPN!")
-                    else:
-                        bot.send_message(referrer_id,
-                            f"🎉 Ваш реферал #{paid_count} оплатил подписку!\n"
-                            "🎁 Вы получили 15 дней бесплатного VPN!")
-                except Exception as e:
-                    logger.error(f"Error sending referral reward notification: {e}")
+                send_referral_notification(referral_result)
             return True
-        else:
-            err = "Verification failed: expire/status not as expected"
-            logger.error(err)
-            cursor.execute("UPDATE payments SET last_error=? WHERE payment_id=?",
-                           (err, payment_id))
-            conn.commit()
-            conn.close()
-            return False
-    elif is_yearly:
-        # Yearly subscription (365 days)
-        logger.info(f"Extending subscription for user {user_id} by 365 days")
+    else:
+        logger.info(f"Extending subscription for user {user_id} by {days_to_add} days")
         current_time = int(time())
         current_expire = user_conf.get("expire", 0) or 0
-        
         if current_expire > current_time:
-            new_expire = current_expire + (365 * 24 * 3600)
+            new_expire = current_expire + (days_to_add * 24 * 3600)
         else:
-            new_expire = current_time + (365 * 24 * 3600)
-        
+            new_expire = current_time + (days_to_add * 24 * 3600)
+
         payload = {"expire": new_expire, "status": "active"}
         try:
             resp = requests.put(url, headers=headers, json=payload)
             resp.raise_for_status()
         except Exception as e:
-            logger.error(f"HTTP error setting yearly subscription: {e}")
+            logger.error(f"HTTP error setting subscription: {e}")
             cursor.execute("UPDATE payments SET last_error=? WHERE payment_id=?",
                            (str(e), payment_id))
             conn.commit()
             conn.close()
             return False
-        
-        # Verify
+
         final_conf = get_user_config(user_str)
         if final_conf.get("status") == "active" and final_conf.get("expire", 0) > current_time:
-            logger.info(f"Yearly subscription successfully set for {user_id}, new expire={new_expire}")
+            logger.info(f"Subscription successfully set for {user_id}, new expire={new_expire}")
             cursor.execute("UPDATE payments SET subscription_extended=1 WHERE payment_id=?",
                            (payment_id,))
             conn.commit()
             conn.close()
             try:
                 days_left = (new_expire - current_time) // (24 * 3600)
-                bot.send_message(user_str, f"✅ Оплата прошла успешно! Ваша подписка продлена на 1 год. Осталось {days_left} дней.")
+                period_text = {
+                    "3_months": "на 3 месяца",
+                    "6_months": "на 6 месяцев", 
+                    "yearly": "на 1 год",
+                    "monthly": "на 30 дней"
+                }.get(subscription_type, f"на {days_to_add} дней")
+                bot.send_message(user_str, f"✅ Оплата прошла успешно! Ваша подписка продлена {period_text}. Осталось {days_left} дней.")
             except Exception as e:
-                logger.error(f"Error sending yearly subscription notification: {e}")
-            # Check for referral rewards
+                logger.error(f"Error sending subscription notification: {e}")
+            
             referral_result = mark_referral_as_paid(user_id)
             if referral_result:
-                referrer_id = referral_result["referrer_id"]
-                paid_count = referral_result["paid_count"]
-                try:
-                    if paid_count == 1:
-                        bot.send_message(referrer_id,
-                            "🎉 Поздравляем! Ваш реферал оплатил подписку!\n"
-                            "🎁 Вы получили 15 дней бесплатного VPN!")
-                    elif paid_count == 10:
-                        bot.send_message(referrer_id,
-                            "🏆 Невероятно! У вас уже 10 оплаченных рефералов!\n"
-                            "🎁 Вы получили 15 дней + бонус 6 месяцев бесплатного VPN!")
-                    elif paid_count == 20:
-                        bot.send_message(referrer_id,
-                            "👑 Легенда! У вас 20 оплаченных рефералов!\n"
-                            "🎁 Вы получили 15 дней + бонус 2 года бесплатного VPN!")
-                    else:
-                        bot.send_message(referrer_id,
-                            f"🎉 Ваш реферал #{paid_count} оплатил подписку!\n"
-                            "🎁 Вы получили 15 дней бесплатного VPN!")
-                except Exception as e:
-                    logger.error(f"Error sending referral reward notification: {e}")
+                send_referral_notification(referral_result)
             return True
+
+    return False
+
+def send_referral_notification(referral_result):
+    """Send referral notification to referrer."""
+    referrer_id = referral_result["referrer_id"]
+    paid_count = referral_result["paid_count"]
+    try:
+        if paid_count == 1:
+            bot.send_message(referrer_id,
+                "🎉 Поздравляем! Ваш реферал оплатил подписку!\n"
+                "🎁 Вы получили 15 дней бесплатного VPN!")
+        elif paid_count == 10:
+            bot.send_message(referrer_id,
+                "🏆 Невероятно! У вас уже 10 оплаченных рефералов!\n"
+                "🎁 Вы получили 15 дней + бонус 6 месяцев бесплатного VPN!")
+        elif paid_count == 20:
+            bot.send_message(referrer_id,
+                "👑 Легенда! У вас 20 оплаченных рефералов!\n"
+                "🎁 Вы получили 15 дней + бонус 2 года бесплатного VPN!")
         else:
-            err = f"Yearly extension verification failed; new_expire={final_conf.get('expire', 0)}"
-            logger.error(err)
-            cursor.execute("UPDATE payments SET last_error=? WHERE payment_id=?",
-                           (err, payment_id))
-            conn.commit()
-            conn.close()
-            return False
-    else:
-        # Standard 30-day extension
-        logger.info(f"Extending subscription for user {user_id} by 30 days")
-        extend_result = extend_subscription(user_str)
-        if isinstance(extend_result, dict) and "error" in extend_result:
-            err = extend_result["error"]
-            logger.error(f"extend_subscription() error: {err}")
-            cursor.execute("UPDATE payments SET last_error=? WHERE payment_id=?",
-                           (err, payment_id))
-            conn.commit()
-            conn.close()
-            return False
+            bot.send_message(referrer_id,
+                f"🎉 Ваш реферал #{paid_count} оплатил подписку!\n"
+                "🎁 Вы получили 15 дней бесплатного VPN!")
+    except Exception as e:
+        logger.error(f"Error sending referral reward notification: {e}")
 
-        # At this point extend_subscription() returns the new user data
-        new_expire = extend_result.get("expire", 0)
-        if not new_expire or new_expire <= int(time()):
-            err = f"Extension did not apply correctly; new_expire={new_expire}"
-            logger.error(err)
-            cursor.execute("UPDATE payments SET last_error=? WHERE payment_id=?",
-                           (err, payment_id))
-            conn.commit()
-            conn.close()
-            return False
-
-        logger.info(f"Subscription extended, new expire={new_expire}")
-        cursor.execute("UPDATE payments SET subscription_extended=1 WHERE payment_id=?",
-                       (payment_id,))
-        conn.commit()
-        conn.close()
-        
-        # Send success message for 30-day extension
-        try:
-            current_time = int(time())
-            days_left = (new_expire - current_time) // (24 * 3600)
-            bot.send_message(user_str, f"✅ Оплата прошла успешно! Ваша подписка продлена на 30 дней. Осталось {days_left} дней.")
-        except Exception as e:
-            logger.error(f"Error sending 30-day payment notification: {e}")
-        
-        # Check for referral rewards
-        referral_result = mark_referral_as_paid(user_id)
-        if referral_result:
-            referrer_id = referral_result["referrer_id"]
-            paid_count = referral_result["paid_count"]
-            try:
-                if paid_count == 1:
-                    bot.send_message(referrer_id,
-                        "🎉 Поздравляем! Ваш реферал оплатил подписку!\n"
-                        "🎁 Вы получили 15 дней бесплатного VPN!")
-                elif paid_count == 10:
-                    bot.send_message(referrer_id,
-                        "🏆 Невероятно! У вас уже 10 оплаченных рефералов!\n"
-                        "🎁 Вы получили 15 дней + бонус 6 месяцев бесплатного VPN!")
-                elif paid_count == 20:
-                    bot.send_message(referrer_id,
-                        "👑 Легенда! У вас 20 оплаченных рефералов!\n"
-                        "🎁 Вы получили 15 дней + бонус 2 года бесплатного VPN!")
-                else:
-                    bot.send_message(referrer_id,
-                        f"🎉 Ваш реферал #{paid_count} оплатил подписку!\n"
-                        "🎁 Вы получили 15 дней бесплатного VPN!")
-            except Exception as e:
-                logger.error(f"Error sending referral reward notification: {e}")
-        return True
 def check_unprocessed_payments():
     """Check for unprocessed payments and process them."""
     while True:
         try:
             import sqlite3
             logger.info("Running scheduled payment verification")
-            # First check if we can access the YooKassa API at all
+            
             try:
-                # Test the credentials with a simple API call
                 Configuration.account_id = SHOP_ID
                 Configuration.secret_key = YUKASSA_API
-                # Try to get a recent payment to verify credentials
                 from yookassa import Payment as YooKassaPayment
                 try:
                     recent_payments = YooKassaPayment.list()
                     logger.info(f"YooKassa API credentials verified successfully")
                 except TypeError:
-                    # If that fails, try with older API parameters
                     logger.info("Trying alternative YooKassa API call format")
                     recent_payments = YooKassaPayment.list({})
                     logger.info(f"YooKassa API credentials verified successfully using alternative format")
             except Exception as auth_error:
                 logger.error(f"YooKassa API authentication error: {auth_error}")
-                # If there's an auth error, wait and retry
-                time.sleep(30)  # Wait for 30 seconds
+                time.sleep(30)
                 continue
-            # Now proceed with checking unprocessed payments
+
             conn = sqlite3.connect('/opt/marzban/payments.db')
             cursor = conn.cursor()
-            # Get unprocessed payments with less than 10 attempts and created in the last 30 days
-            # Also check for payments that are marked as processed but not marked as subscription_extended
             cursor.execute(
                 """
                 SELECT payment_id, user_id FROM payments
@@ -666,45 +594,29 @@ def check_unprocessed_payments():
             )
             unprocessed_payments = cursor.fetchall()
             logger.info(f"Found {len(unprocessed_payments)} unprocessed payments to verify")
+
             for payment_id, user_id in unprocessed_payments:
                 try:
-                    # Check payment status with YooKassa API
                     payment_info = YooKassaPayment.find_one(payment_id)
                     logger.info(f"Retrieved payment {payment_id} status: {payment_info.status}")
-                    # Update attempts counter
+                    
                     cursor.execute(
                         "UPDATE payments SET attempts = attempts + 1 WHERE payment_id = ?",
                         (payment_id,)
                     )
                     conn.commit()
+
                     if payment_info.status == "succeeded":
                         logger.info(f"Found succeeded payment {payment_id} for user {user_id} - processing now")
-                        # Process the subscription extension
                         extension_success = apply_subscription_extension(user_id, payment_id)
                         if extension_success:
-                            # Mark as processed
                             cursor.execute(
                                 "UPDATE payments SET status = 'processed', processed_at = datetime('now') WHERE payment_id = ?",
                                 (payment_id,)
                             )
                             conn.commit()
-                            # Get the latest user config after all operations
-                            final_user_config = get_user_config(str(user_id))
-                            current_time = int(time.time())
-                            expire_time = final_user_config.get("expire", 0)
-                            days_left = (expire_time - current_time) // (24 * 3600)
                             logger.info(f"Payment {payment_id} successfully processed for user {user_id}")
-                            # Send notification to user
-                            try:
-                                bot.send_message(
-                                    str(user_id),
-                                    f"✅ Оплата прошла успешно! Ваша подписка продлена на 30 дней. Текущий остаток: {days_left} дней."
-                                )
-                                logger.info(f"Successfully sent payment notification to user {user_id}")
-                            except Exception as e:
-                                logger.error(f"Error sending payment notification to user {user_id}: {e}")
                         else:
-                            # If already marked as processed but extension failed
                             cursor.execute(
                                 "SELECT status FROM payments WHERE payment_id = ?",
                                 (payment_id,)
@@ -713,14 +625,12 @@ def check_unprocessed_payments():
                             if current_status == 'processed':
                                 logger.error(f"Payment {payment_id} is marked as processed but subscription was not extended. Will retry.")
                             else:
-                                # Mark as pending_extension to indicate we need to try again
                                 cursor.execute(
                                     "UPDATE payments SET status = 'pending_extension' WHERE payment_id = ?",
                                     (payment_id,)
                                 )
                                 conn.commit()
                     elif payment_info.status == "canceled":
-                        # Mark as canceled
                         cursor.execute(
                             "UPDATE payments SET status = 'canceled', processed_at = datetime('now') WHERE payment_id = ?",
                             (payment_id,)
@@ -732,18 +642,16 @@ def check_unprocessed_payments():
             conn.close()
         except Exception as e:
             logger.error(f"Error in payment verification process: {e}", exc_info=True)
-        # Run every 2 minutes
         time.sleep(120)
-# Setup YooKassa webhook at startup
+
 def setup_yookassa_webhook():
     return True
+
 def is_valid_ip(ip_str):
     """Accept all IPs for YooKassa webhooks."""
-    # Log the IP for audit purposes
     logger.info(f"Accepting webhook from IP: {ip_str}")
-    # For security logging, we'll still check if it's in the known ranges
     from ipaddress import ip_address, ip_network
-    # Updated IP ranges from YooKassa documentation
+    
     yookassa_ip_ranges = [
         '185.71.76.0/27',
         '185.71.77.0/27',
@@ -755,45 +663,43 @@ def is_valid_ip(ip_str):
     ]
     try:
         client_ip = ip_address(ip_str)
-        # Convert single IPs to networks
         networks = []
         for ip_range in yookassa_ip_ranges:
             if '/' in ip_range:
                 networks.append(ip_network(ip_range))
             else:
                 networks.append(ip_network(f"{ip_range}/32"))
-        # Check if client IP is in any of the networks (for logging only)
+
         in_known_range = False
         for network in networks:
             if client_ip in network:
                 in_known_range = True
                 break
+
         if not in_known_range:
             logger.info(f"IP {ip_str} not in YooKassa known ranges, but accepting anyway")
     except Exception as e:
         logger.error(f"Error checking IP {ip_str}: {e}")
-    # Always accept all IPs
+
     return True
-# Fix the webhook handler to properly handle YooKassa notifications
+
 @app.route('/yookassa-webhook', methods=['POST'])
 def yookassa_webhook():
     client_ip = request.remote_addr
-    # Log webhook access
     interaction_logger.info(f"WEBHOOK_ACCESS - IP: {client_ip}")
-    """
-    Receive YooKassa webhook, record it, and immediately apply the subscription.
-    """
+    
     try:
         client_ip = request.remote_addr
         logger.info(f"Webhook from IP: {client_ip}")
-        # 1) Parse JSON
+
         try:
             event = request.get_json(force=True)
         except Exception as je:
             logger.error(f"Invalid JSON payload: {je}")
             return "Bad Request", 400
+
         logger.info(f"Webhook payload: {event}")
-        # 2) Persist raw webhook for auditing
+
         try:
             import sqlite3
             conn_w = sqlite3.connect('/opt/marzban/webhook_logs.db')
@@ -814,30 +720,30 @@ def yookassa_webhook():
             conn_w.close()
         except Exception as db_e:
             logger.error(f"Failed to store webhook log: {db_e}")
-        # 3) Only care about payment.succeeded
+
         if event.get("event") != "payment.succeeded":
             return "OK", 200
+
         obj = event.get("object", {})
         payment_id = obj.get("id")
         if not payment_id:
             logger.error("No payment ID in webhook")
             return "Bad Request", 400
-        # 4) Extract metadata
+
         meta = obj.get("metadata", {})
         user_id = meta.get("user_id")
         if not user_id:
             logger.error(f"No user_id in metadata for payment {payment_id}")
             return "Bad Request", 400
-        # 5) Decide if it's eternal, yearly, or 30-day
+
         raw_amt = obj.get("amount", {}).get("value", "0")
         try:
             amt = float(raw_amt)
         except (ValueError, TypeError):
             amt = 0.0
-        is_eternal = (amt >= 990.0)
-        is_yearly = (amt >= 499.0 and amt < 990.0)
-        logger.info(f"Webhook payment {payment_id} for user {user_id}, amount={amt}, eternal={is_eternal}, yearly={is_yearly}")
-        # 6) Upsert into payments DB
+
+        logger.info(f"Webhook payment {payment_id} for user {user_id}, amount={amt}")
+
         import sqlite3
         conn = sqlite3.connect('/opt/marzban/payments.db')
         cursor = conn.cursor()
@@ -855,17 +761,15 @@ def yookassa_webhook():
                 (payment_id, user_id, raw_amt, 'webhook_received')
             )
         conn.commit()
-        # 7) Actually apply the subscription
+
         success = apply_subscription_extension(user_id, payment_id)
-        # 8) Update final status - but don't send duplicate messages
-        if success:
+        if success: 
             cursor.execute(
                 "UPDATE payments SET status='processed', subscription_extended=1, processed_at=datetime('now')"
                 " WHERE payment_id = ?",
                 (payment_id,)
             )
             conn.commit()
-            # Don't send additional messages here - they're already sent in apply_subscription_extension
             logger.info(f"Webhook processing completed for payment {payment_id}, user {user_id}")
         else:
             cursor.execute(
@@ -875,25 +779,25 @@ def yookassa_webhook():
             )
             conn.commit()
         conn.close()
+
         return "OK", 200
     except Exception as e:
         interaction_logger.info(f"WEBHOOK_ERROR - IP: {client_ip} - Error: {str(e)[:100]}")
         logger.error(f"Unhandled exception in webhook handler: {e}", exc_info=True)
         return "Internal Server Error", 500
-# Start Flask server in a separate thread
+
 def run_webhook_server():
     """Run the Flask webhook server with proper configuration."""
-    # Use a production WSGI server in production
     from werkzeug.serving import run_simple
-    # Configure SSL context if using self-signed certs
     import ssl
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    # Point to your certificate and key files
     context.load_cert_chain('/var/lib/marzban/certs/fullchain.pem', '/var/lib/marzban/certs/key.pem')
     run_simple('0.0.0.0', 8443, app, ssl_context=context)
+
 webhook_thread = threading.Thread(target=run_webhook_server)
 webhook_thread.daemon = True
 webhook_thread.start()
+
 def get_marzban_token():
     """Get authentication token from Marzban server."""
     try:
@@ -908,6 +812,7 @@ def get_marzban_token():
     except requests.exceptions.RequestException as e:
         logger.error(f"Error getting Marzban token: {e}")
         raise Exception(f"Authentication error: {e}")
+
 def get_user_config(user_id):
     """Get user configuration from Marzban."""
     try:
@@ -928,6 +833,7 @@ def get_user_config(user_id):
     except Exception as e:
         logger.error(f"Unexpected error in get_user_config for {user_id}: {e}")
         return {"error": f"Unexpected error: {str(e)}"}
+
 def extend_subscription(username):
     """Extend user subscription by 30 days."""
     logger.info(f"Attempting to extend subscription for user {username}")
@@ -942,86 +848,84 @@ def extend_subscription(username):
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json"
             }
-            # Get current user data
+
             logger.info(f"Fetching current user data for {username}")
             current_user = get_user_config(username)
             if "error" in current_user:
                 logger.error(f"Error getting user data for {username}: {current_user['error']}")
                 return {"error": current_user["error"]}
+
             if not current_user or "username" not in current_user:
                 logger.error(f"User {username} not found or invalid response from API: {current_user}")
                 return {"error": "User not found"}
+
             logger.info(f"Current user data for {username}: status={current_user.get('status')}, "
                         f"expire={current_user.get('expire')}, data_limit={current_user.get('data_limit')}")
-            # Calculate new expiration date
+
             current_time = int(time.time())
             current_expire = current_user.get("expire", 0)
-            # Ensure current_expire is an integer
             if current_expire is None:
                 logger.warning(f"User {username} has None expiry - treating as 0")
                 current_expire = 0
-            # Make sure we're dealing with an integer value
+
             current_expire = int(current_expire)
-            # Determine new expiration time
+
             if current_expire > current_time:
-                # If subscription is still active, add 30 days to current expiry
                 new_expire = current_expire + (30 * 24 * 3600)
                 logger.info(f"Extending active subscription for {username} from {current_expire} "
                            f"({datetime.fromtimestamp(current_expire).strftime('%Y-%m-%d %H:%M:%S')}) "
                            f"to {new_expire} ({datetime.fromtimestamp(new_expire).strftime('%Y-%m-%d %H:%M:%S')})")
             else:
-                # If subscription has expired, start a new 30-day period
                 new_expire = current_time + (30 * 24 * 3600)
                 logger.info(f"Starting new subscription period for {username} from now until {new_expire} "
                            f"({datetime.fromtimestamp(new_expire).strftime('%Y-%m-%d %H:%M:%S')})")
-            # Always explicitly set status to active and provide a non-zero expire time
+
             data = {
                 "expire": new_expire,
-                "status": "active"  # Always set to active to ensure account is enabled
+                "status": "active"
             }
             logger.info(f"Sending update request for {username} with data: {data}")
             response = requests.put(url, headers=headers, json=data)
-            # Log the full response for debugging
+
             logger.info(f"API response status code: {response.status_code}")
             logger.info(f"API response headers: {response.headers}")
             logger.info(f"API response content: {response.text[:1000]}")
             response.raise_for_status()
             result = response.json()
             logger.info(f"API update successful for {username}: {result}")
-            # Verify the update was successful by checking both status and expire
+
             logger.info(f"Verifying subscription update for {username}")
             updated_user = get_user_config(username)
             if "error" in updated_user:
                 logger.error(f"Error verifying user update for {username}: {updated_user['error']}")
                 raise Exception(f"Update verification failed: {updated_user['error']}")
-            # Check status - must be active
+
             if updated_user.get("status") != "active":
                 logger.error(f"Status update failed for {username}. Expected: active, Got: {updated_user.get('status')}")
                 logger.error(f"Full updated user data: {updated_user}")
-                # Try one more specific update just for status
                 status_data = {"status": "active"}
                 logger.info(f"Attempting to explicitly set just status for {username}")
                 status_response = requests.put(url, headers=headers, json=status_data)
                 status_response.raise_for_status()
                 logger.info(f"Status update response: {status_response.text[:1000]}")
-            # Check expiry - must be non-zero and close to our calculated value
+
             updated_expire = updated_user.get("expire", 0)
             if updated_expire == 0:
                 logger.error(f"Expiry is still 0 for {username} after update")
-                # Try one more specific update just for expire
                 expire_data = {"expire": new_expire}
                 logger.info(f"Attempting to explicitly set just expire for {username}")
                 expire_response = requests.put(url, headers=headers, json=expire_data)
                 expire_response.raise_for_status()
                 logger.info(f"Expire update response: {expire_response.text[:1000]}")
-            elif abs(updated_expire - new_expire) > 120:  # Allow for small timing differences (120 seconds)
+            elif abs(updated_expire - new_expire) > 120:
                 logger.warning(f"Expiry differs from expected for {username}. Expected: {new_expire}, Got: {updated_expire}")
                 logger.warning(f"Difference: {abs(updated_expire - new_expire)} seconds")
-            # Final verification
+
             final_user = get_user_config(username)
             if final_user.get("status") != "active" or final_user.get("expire", 0) == 0:
                 logger.error(f"Final verification failed for {username}. Status: {final_user.get('status')}, Expire: {final_user.get('expire')}")
                 return {"error": "Failed to properly update user subscription"}
+
             logger.info(f"Successfully extended subscription for {username}. New expiry: {final_user.get('expire')} "
                        f"({datetime.fromtimestamp(final_user.get('expire')).strftime('%Y-%m-%d %H:%M:%S')})")
             return final_user
@@ -1033,12 +937,13 @@ def extend_subscription(username):
                 logger.error(f"API request failed after {max_retries} attempts for {username}: {e}", exc_info=True)
                 return {"error": f"API request failed after {max_retries} attempts: {str(e)}"}
             logger.info(f"Waiting 2 seconds before retry {retry_count+1}/{max_retries}")
-            time.sleep(2)  # Wait before retrying
+            time.sleep(2)
         except Exception as e:
             logger.error(f"Unexpected error in extend_subscription for {username}: {e}", exc_info=True)
             return {"error": f"Unexpected error: {str(e)}"}
-    # This should not be reached due to the retry logic, but included for safety
+
     return {"error": f"Failed to extend subscription for {username} after {max_retries} attempts"}
+
 def disable_expired_user(username):
     """Disable a user's VPN account."""
     try:
@@ -1050,7 +955,7 @@ def disable_expired_user(username):
         }
         data = {
             "status": "disabled",
-            "expire": 0  # Reset expire time
+            "expire": 0
         }
         response = requests.put(url, headers=headers, json=data)
         response.raise_for_status()
@@ -1059,6 +964,7 @@ def disable_expired_user(username):
     except Exception as e:
         logger.error(f"Error disabling user {username}: {e}")
         return {"error": str(e)}
+
 def force_activate_user(username):
     """Force activate a user's account regardless of previous state."""
     logger.info(f"Attempting to force activate user {username}")
@@ -1069,7 +975,6 @@ def force_activate_user(username):
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
-        # Simple update with just the status field
         data = {
             "status": "active"
         }
@@ -1082,6 +987,7 @@ def force_activate_user(username):
     except Exception as e:
         logger.error(f"Error during force activation for {username}: {e}", exc_info=True)
         return {"error": str(e)}
+
 def create_user(username):
     """Create a new VPN user account."""
     try:
@@ -1116,6 +1022,7 @@ def create_user(username):
     except Exception as e:
         logger.error(f"Unexpected error creating user {username}: {e}")
         raise Exception(f"Unexpected error: {str(e)}")
+
 @bot.message_handler(commands=['start'])
 def start(message):
     log_user_interaction(
@@ -1124,10 +1031,10 @@ def start(message):
         "COMMAND_START",
         f"first_name: {message.from_user.first_name}"
     )
-    # Check if user already exists in Marzban first
+    
     existing_config = get_user_config(str(message.from_user.id))
     is_new_user = "error" in existing_config and "User not found" in existing_config.get("error", "")
-    # Extract referral code if present and user is new
+
     referral_added = False
     if len(message.text.split()) > 1 and is_new_user:
         referral_code = message.text.split()[1]
@@ -1139,19 +1046,18 @@ def start(message):
                     bot.send_message(
                         referrer_id,
                         f"🎉 Новый пользователь присоединился по вашей реферальной ссылке!\n"
-                        f"Когда он оплатит подписку (99₽), вы получите 15 дней бесплатно!"
+                        f"Когда он оплатит подписку, вы получите 15 дней бесплатно!"
                     )
                 except Exception:
                     pass
     elif len(message.text.split()) > 1 and not is_new_user:
         logger.info(f"Referral link used by existing user {message.from_user.id}, not counting")
-    """Handle the /start command."""
-    # Create permanent keyboard with main menu button
+
     permanent_keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     start_button = types.KeyboardButton('Главное меню')
     help_button = types.KeyboardButton('Помощь')
     permanent_keyboard.add(start_button, help_button)
-    # Create inline keyboard for main menu
+
     inline_markup = types.InlineKeyboardMarkup()
     subscribe_button = types.InlineKeyboardButton('📢 Подписаться на канал', url=CHANNEL_LINK)
     get_config_button = types.InlineKeyboardButton('🔑 Получить конфигурацию', callback_data='get_config')
@@ -1164,24 +1070,28 @@ def start(message):
     inline_markup.add(get_config_button)
     inline_markup.add(select_device_button)
     inline_markup.add(payment_button)
-    inline_markup.add(check_days_button)
+    inline_markup.ad(check_days_button)
     inline_markup.add(referral_button)
     inline_markup.add(help_button_inline)
-    # Add referral success message if applicable
+
     welcome_text = ("🌟 _Добро пожаловать в VPN бот!_\n\n"
                    "🎁 10 дней для новых пользователей _бесплатно_\n"
                    "💰 Далее всего 99₽ в месяц\n"
                    "🚀 Безлимитный трафик\n"
                    "🔒 Надежная защита\n\n"
-                   "✨ _ВРЕМЕННАЯ АКЦИЯ:_ ✨ Год подписки всего за 599!")
+                   "✨ _СПЕЦИАЛЬНЫЕ ПРЕДЛОЖЕНИЯ:_ ✨\n"
+                   "• 3 месяца - 199₽\n"
+                   "• 6 месяцев - 299₽\n"
+                   "• 12 месяцев - 599₽")
+
     if referral_added:
         welcome_text += "\n\n🎉 _Вы присоединились по реферальной ссылке!_"
-    # First message with permanent keyboard
+
     bot.send_message(message.chat.id,
                      welcome_text,
                      reply_markup=permanent_keyboard,
                      parse_mode='Markdown')
-    # Second message with inline buttons
+
     bot.send_message(message.chat.id,
                      "📝 _Для начала использования VPN:_\n\n"
                      "1️⃣ Подпишитесь на канал\n"
@@ -1189,6 +1099,7 @@ def start(message):
                      "⚠️ _Важно:_ не отписывайтесь от канала, иначе ключ доступа будет удален.",
                      reply_markup=inline_markup,
                      parse_mode='Markdown')
+
 @bot.message_handler(func=lambda message: message.text == "Главное меню")
 def main_menu(message):
     log_user_interaction(
@@ -1196,8 +1107,8 @@ def main_menu(message):
         message.from_user.username,
         "BUTTON_MAIN_MENU"
     )
-    """Handle the 'Main Menu' button press."""
     start(message)
+
 @bot.message_handler(func=lambda message: message.text == "Помощь")
 def help_menu(message):
     log_user_interaction(
@@ -1205,7 +1116,6 @@ def help_menu(message):
         message.from_user.username,
         "BUTTON_HELP"
     )
-    """Handle the 'Help' button press."""
     markup = types.InlineKeyboardMarkup()
     video_instruction_button = types.InlineKeyboardButton('🎥 Видео инструкция', callback_data='video_instruction')
     vpn_not_working_button = types.InlineKeyboardButton('🚫 Не работает VPN?', callback_data='vpn_not_working')
@@ -1219,11 +1129,11 @@ def help_menu(message):
                      "❓*Помощь*",
                      reply_markup=markup,
                      parse_mode='Markdown')
+
 def check_subscription_status():
     """Thread function to check if users are still subscribed to the channel."""
     while True:
         try:
-            # Get all users from Marzban
             token = get_marzban_token()
             url = f"{MARZBAN_URL}/api/users"
             headers = {
@@ -1233,20 +1143,17 @@ def check_subscription_status():
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             users = response.json()["users"]
-            # Check each active user's subscription
+
             for user in users:
                 if user["status"] == "active":
                     try:
-                        # Only check numeric usernames (actual Telegram IDs)
                         if user["username"].isdigit():
                             user_id = int(user["username"])
                             user_status = bot.get_chat_member(CHANNEL_ID, user_id)
                             if user_status.status not in ['member', 'administrator', 'creator']:
-                                # Disable user's VPN account
                                 logger.info(f"User {user_id} unsubscribed from channel, disabling account")
                                 result = disable_expired_user(user["username"])
                                 if "error" not in result:
-                                    # Send notification
                                     try:
                                         bot.send_message(user_id,
                                                         "❌ Ваш VPN аккаунт деактивирован, так как вы отписались от канала. "
@@ -1257,7 +1164,8 @@ def check_subscription_status():
                         logger.error(f"Error checking subscription for user {user['username']}: {e}")
         except Exception as e:
             logger.error(f"Subscription check error: {e}")
-        time.sleep(3600)  # Check every hour
+        time.sleep(3600)
+
 def check_subscriptions():
     """Thread function to check subscription expiry and send notifications."""
     while True:
@@ -1272,12 +1180,12 @@ def check_subscriptions():
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             users = response.json()["users"]
+
             for user in users:
                 user_id = user["username"]
-                # Skip non-numeric usernames (not Telegram IDs)
                 if not user_id.isdigit():
                     continue
-                # Handle expired users
+
                 if user["status"] == "expired":
                     logger.info(f"Processing expired user: {user_id}")
                     result = disable_expired_user(user_id)
@@ -1289,10 +1197,8 @@ def check_subscriptions():
                             logger.info(f"Sent expiration notification to user {user_id}")
                         except Exception as e:
                             logger.error(f"Error sending message to user {user_id}: {e}")
-                # Handle active users with expiration time
                 elif user["status"] == "active" and "expire" in user and user["expire"] is not None:
                     time_to_expire = user["expire"] - current_time
-                    # 2-day warning
                     if 85400 < time_to_expire <= 172800 and not notification_store.is_notified(f"warning_48h_{user_id}"):
                         try:
                             bot.send_message(user_id,
@@ -1301,7 +1207,6 @@ def check_subscriptions():
                             logger.info(f"Sent 48h warning to user {user_id}")
                         except Exception as e:
                             logger.error(f"Error sending 48h warning to user {user_id}: {e}")
-                    # 1-day warning
                     elif 64800 < time_to_expire <= 86400 and not notification_store.is_notified(f"warning_24h_{user_id}"):
                         try:
                             bot.send_message(user_id,
@@ -1310,56 +1215,49 @@ def check_subscriptions():
                             logger.info(f"Sent 24h warning to user {user_id}")
                         except Exception as e:
                             logger.error(f"Error sending 24h warning to user {user_id}: {e}")
-                    # Reset notification flags if subscription is renewed
                     elif time_to_expire > 172800:
                         notification_store.reset_notification(f"warning_48h_{user_id}")
                         notification_store.reset_notification(f"warning_24h_{user_id}")
                         notification_store.reset_notification(f"expired_{user_id}")
         except Exception as e:
             logger.error(f"Subscription check error: {e}")
-        time.sleep(3600)  # Check every hour
+        time.sleep(3600)
+
 def create_app_buttons(device):
     """Create buttons for app download links based on device type."""
     markup = types.InlineKeyboardMarkup()
     if device == 'ios':
         apps = {
             'v2RayTun': 'https://apps.apple.com/kz/app/v2raytun/id6476628951'
-            #'Streisand': 'https://apps.apple.com/app/streisand/id6450534064',
-            #'V2BOX': 'https://apps.apple.com/app/v2box/id6446814690',
-            #'FoxRay': 'https://apps.apple.com/app/foxray/id6448898396'
         }
-        # Add video instruction button for iPhone
         markup.add(types.InlineKeyboardButton('🎥 Видео инструкция', callback_data='video_phone'))
     elif device == 'android':
         apps = {
             'v2RayTun': 'https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=en',
             'Hiddify': 'https://play.google.com/store/apps/details?id=app.hiddify.com&hl=en'
         }
-        # Add video instruction button for Android
         markup.add(types.InlineKeyboardButton('🎥 Видео инструкция', callback_data='video_phone'))
     elif device == 'windows':
         apps = {
             'V2raytun': 'https://v2raytun.com',
-            #'Hiddify-Next': 'https://github.com/hiddify/hiddify-next/releases',
             'InvisibleManXRay': 'https://github.com/InvisibleManVPN/InvisibleMan-XRayClient/releases/download/v3.2.5/InvisibleManXRay-x64.zip'
         }
-        # Add video instruction button for Windows
         markup.add(types.InlineKeyboardButton('🎥 Видео инструкция', callback_data='video_windows'))
     elif device == 'macos':
         apps = {
             'Hiddify-Next': 'https://github.com/hiddify/hiddify-next/releases',
-            #'Streisand': 'https://apps.apple.com/app/streisand/id6450534064',
-            #'FoxRay': 'https://apps.apple.com/app/foxray/id6448898396'
         }
     elif device == 'androidtv':
         apps = {
             'v2RayTun': 'https://play.google.com/store/apps/details?id=com.v2ray.v2raytun',
             'Hiddify-Next': 'https://play.google.com/store/apps/details?id=app.hiddify.com'
         }
+
     for app_name, app_url in apps.items():
         markup.add(types.InlineKeyboardButton(app_name, url=app_url))
     markup.add(types.InlineKeyboardButton('❌ Закрыть', callback_data='close'))
     return markup
+
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     log_user_interaction(
@@ -1368,7 +1266,7 @@ def callback_handler(call):
         f"CALLBACK_{call.data.upper()}",
         f"from_message_id: {call.message.message_id}"
     )
-    """Handle callback queries from inline buttons."""
+
     try:
         if call.data == 'select_device':
             markup = types.InlineKeyboardMarkup()
@@ -1399,7 +1297,6 @@ def callback_handler(call):
         elif call.data == 'close':
             bot.delete_message(call.message.chat.id, call.message.message_id)
         elif call.data == 'back_to_menu':
-            # Create inline keyboard for main menu
             inline_markup = types.InlineKeyboardMarkup()
             subscribe_button = types.InlineKeyboardButton('📢 Подписаться на канал', url=CHANNEL_LINK)
             get_config_button = types.InlineKeyboardButton('🔑 Получить конфигурацию', callback_data='get_config')
@@ -1463,14 +1360,11 @@ def callback_handler(call):
             )
             markup = types.InlineKeyboardMarkup()
             try:
-                # Сначала проверим, существует ли пользователь
                 existing_config = get_user_config(str(call.from_user.id))
-                # Если пользователя нет, создаем его (аналогично кнопке "Получить конфигурацию")
                 if "error" in existing_config and "User not found" in existing_config["error"]:
                     try:
                         logger.info(f"User {call.from_user.id} not found. Creating new user before payment")
                         vpn_account = create_user(str(call.from_user.id))
-                        # Track referral user creation
                         track_referral_user_creation(str(call.from_user.id))
                         logger.info(f"User {call.from_user.id} created successfully before payment")
                     except Exception as create_e:
@@ -1480,29 +1374,46 @@ def callback_handler(call):
                             f"❌ Ошибка создания аккаунта: {str(create_e)[:50]}... Попробуйте позже."
                         )
                         return
-                # Создаем кнопку для стандартной подписки (30 дней)
-                payment = create_payment(call.from_user.id)
-                pay_button = types.InlineKeyboardButton(
-                    '💳 Оплатить 99₽ (30 дней)',
-                    url=payment["confirmation_url"]
+
+                # Create payment buttons for different subscription periods
+                payment_1m = create_payment(call.from_user.id, "99.00")
+                pay_1m_button = types.InlineKeyboardButton(
+                    '💳 1 месяц - 99₽',
+                    url=payment_1m["confirmation_url"]
                 )
-                # Создаем кнопку для подписки на год (499 рублей)
-                year_payment = create_payment(call.from_user.id, amount="499.00")
-                year_pay_button = types.InlineKeyboardButton(
-                    '💳 Оплатить 499₽ (1 год)',
-                    url=year_payment["confirmation_url"]
+
+                payment_3m = create_payment(call.from_user.id, "199.00")
+                pay_3m_button = types.InlineKeyboardButton(
+                    '💳 3 месяца - 199₽',
+                    url=payment_3m["confirmation_url"]
                 )
-                # Создаем кнопку для вечной подписки (990 рублей)
-                eternal_payment = create_payment(call.from_user.id, amount="990.00")
+
+                payment_6m = create_payment(call.from_user.id, "299.00")
+                pay_6m_button = types.InlineKeyboardButton(
+                    '💳 6 месяцев - 299₽',
+                    url=payment_6m["confirmation_url"]
+                )
+
+                payment_12m = create_payment(call.from_user.id, "599.00")
+                pay_12m_button = types.InlineKeyboardButton(
+                    '💳 12 месяцев - 599₽',
+                    url=payment_12m["confirmation_url"]
+                )
+
+                eternal_payment = create_payment(call.from_user.id, "990.00")
                 eternal_pay_button = types.InlineKeyboardButton(
-                    '💫 Вечная подписка 990₽',
+                    '💫 Вечная подписка - 990₽',
                     url=eternal_payment["confirmation_url"]
                 )
+
                 back_button = types.InlineKeyboardButton('◀️ Назад', callback_data='back_to_menu')
-                markup.add(pay_button)
-                markup.add(year_pay_button)
-                markup.add(eternal_pay_button)
+                markup.add(pay_1m_button)
+                markup.add(pay_3m_button)
+                markup.add(pay_6m_button)
+                markup.add(pay_12m_button)
+                #markup.add(eternal_pay_button)
                 markup.add(back_button)
+
                 message_text = (
                     "💫 _VPN подписка_\n\n"
                     "💰 1 месяц: 99 ₽\n"
@@ -1514,8 +1425,7 @@ def callback_handler(call):
                     "   • Высокая скорость\n"
                     "   • Поддержка 24/7\n"
                     "   • Работает на всех устройствах\n\n"
-                    "🔒 Безопасная оплата через ЮKassa\n\n"
-                    "✨ _ВРЕМЕННАЯ АКЦИЯ:_ ✨ Год подписки всего за 599₽!"
+                    "🔒 Безопасная оплата через ЮKassa"
                 )
                 bot.edit_message_text(
                     message_text,
@@ -1536,11 +1446,12 @@ def callback_handler(call):
                 if "error" in user_config:
                     bot.answer_callback_query(call.id, f"❌ Ошибка: {user_config['error']}", show_alert=True)
                     return
+
                 if "username" in user_config:
                     current_time = int(time.time())
                     expire_time = user_config.get("expire")
                     account_active = user_config.get("status") != "disabled"
-                    # Check if expire_time is None or 0
+
                     if (expire_time is None or expire_time == 0) and account_active:
                         bot.answer_callback_query(call.id, "✅ У Вас вечная подписка", show_alert=True)
                     elif expire_time is None or expire_time == 0:
@@ -1559,22 +1470,16 @@ def callback_handler(call):
                     bot.answer_callback_query(call.id, "❌ У вас нет активной подписки", show_alert=True)
             except Exception as e:
                 logger.error(f"Error checking subscription days for user {call.from_user.id}: {e}")
-                account_active = user_config.get("status") != "disabled"
-                if (expire_time is None or expire_time == 0) and account_active:
-                    bot.answer_callback_query(call.id, "✅ У Вас вечная подписка", show_alert=True)
-                else:
-                    bot.answer_callback_query(call.id, f"❌ Ошибка при проверке подписки: {str(e)[:50]}", show_alert=True)
+                bot.answer_callback_query(call.id, f"❌ Ошибка при проверке подписки: {str(e)[:50]}", show_alert=True)
         elif call.data == 'check_sub':
             try:
                 user_status = bot.get_chat_member(CHANNEL_ID, call.from_user.id)
                 status_text = ""
                 if user_status.status in ['member', 'administrator', 'creator']:
-                    # Check if user has a disabled account
                     existing_config = get_user_config(str(call.from_user.id))
                     if "error" in existing_config:
                         status_text = "✅ Вы подписаны на группу. Теперь вы можете получить VPN, нажав кнопку 'Получить конфигурацию'"
                     elif "username" in existing_config and existing_config.get("status") == "disabled":
-                        # Reactivate account
                         token = get_marzban_token()
                         url = f"{MARZBAN_URL}/api/user/{call.from_user.id}"
                         headers = {
@@ -1608,13 +1513,11 @@ def callback_handler(call):
             try:
                 user_status = bot.get_chat_member(CHANNEL_ID, call.from_user.id)
                 if user_status.status in ['member', 'administrator', 'creator']:
-                    # Try to get existing configuration
                     existing_config = get_user_config(str(call.from_user.id))
-                    # If user doesn't exist, create new account
+                    
                     if "error" in existing_config and "User not found" in existing_config["error"]:
                         try:
                             vpn_account = create_user(str(call.from_user.id))
-                            # Track referral user creation
                             track_referral_user_creation(str(call.from_user.id))
                             if "links" in vpn_account:
                                 all_links = vpn_account["links"]
@@ -1638,15 +1541,12 @@ def callback_handler(call):
                         except Exception as create_e:
                             logger.error(f"Error creating user {call.from_user.id}: {create_e}")
                             bot.send_message(call.message.chat.id, f"❌ Ошибка создания аккаунта: {str(create_e)[:100]}. Попробуйте позже")
-                    # Handle other API errors
                     elif "error" in existing_config:
                         bot.send_message(call.message.chat.id, f"❌ Ошибка получения конфигурации: {existing_config['error']}")
                         return
-                    # If user exists and is disabled
                     elif "username" in existing_config and existing_config.get("status") == "disabled":
                         bot.send_message(call.message.chat.id,
                             "❌ Ваша VPN подписка истекла. Аккаунт деактивирован. Для продления напишите в чате /start, нажмите кнопку 'Главное меню -> Оплатить подписку'")
-                    # If user exists and is active
                     elif "username" in existing_config and existing_config.get("status") == "active":
                         all_links = existing_config["links"]
                         markup = types.InlineKeyboardMarkup()
@@ -1729,7 +1629,6 @@ def callback_handler(call):
                              parse_mode='Markdown')
         elif call.data == 'payment_services':
             markup = types.InlineKeyboardMarkup()
-            # Create buttons for different services with pre-filled messages
             services = [
                 ('Booking', "Добрый день, хочу оплатить подписку Booking"),
                 ('Airbnb', "Добрый день, хочу оплатить подписку Airbnb"),
@@ -1774,6 +1673,7 @@ def callback_handler(call):
             )
         except Exception:
             pass
+
 # Start subscription checkers in separate threads
 setup_payment_tracker()
 setup_referral_database()
@@ -1783,10 +1683,11 @@ subscription_checker.start()
 expiry_checker = threading.Thread(target=check_subscriptions)
 expiry_checker.daemon = True
 expiry_checker.start()
-# Make sure to setup the YooKassa webhook at startup
+
 setup_yookassa_webhook()
 payment_checker_thread = threading.Thread(target=check_unprocessed_payments)
 payment_checker_thread.daemon = True
 payment_checker_thread.start()
+
 logger.info("Starting the bot...")
 bot.polling(none_stop=True)
