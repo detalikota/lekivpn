@@ -997,7 +997,7 @@ def create_user(username):
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
-        expire_date = datetime.now() + timedelta(days=10)
+        expire_date = datetime.now() + timedelta(days=7)
         expire_timestamp = int(expire_date.timestamp())
         data = {
             "username": str(username),
@@ -1075,14 +1075,14 @@ def start(message):
     inline_markup.add(help_button_inline)
 
     welcome_text = ("🌟 _Добро пожаловать в VPN бот!_\n\n"
-                   "🎁 10 дней для новых пользователей _бесплатно_\n"
+                   "🎁 7 дней для новых пользователей _бесплатно_\n"
                    "💰 Далее всего 99₽ в месяц\n"
                    "🚀 Безлимитный трафик\n"
-                   "🔒 Надежная защита\n\n"
-                   "✨ _СПЕЦИАЛЬНЫЕ ПРЕДЛОЖЕНИЯ:_ ✨\n"
-                   "• 3 месяца - 199₽\n"
-                   "• 6 месяцев - 299₽\n"
-                   "• 12 месяцев - 599₽")
+                   "🔒 Надежная защита\n"
+                   "⚡️Высокая скорость без перебоев\n"
+                   "⚙️ Техническая поддержка пользователей\n\n"
+                   "Мы с командой стараемся создать для вас лучший пользовательский опыт🤝\n\n"
+                   "Спасибо , что выбираете нас !💖")
 
     if referral_added:
         welcome_text += "\n\n🎉 _Вы присоединились по реферальной ссылке!_"
@@ -1528,7 +1528,7 @@ def callback_handler(call):
                                 markup.add(video_instruction_button)
                                 response1 = (
                                     "✅ VPN аккаунт создан!\n\n"
-                                    "ℹ️ Срок действия: 10 дней\n"
+                                    "ℹ️ Срок действия: 7 дней\n"
                                     "⚠️ За день до истечения срока вы получите уведомление\n\n"
                                     "1. Скачайте приложение\n"
                                     "2. Скопируйте представленную ниже конфигурацию в приложение"
