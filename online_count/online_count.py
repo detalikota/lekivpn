@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timedelta
 from cred import USERNAME, PASSWORD
 
-MARZBAN_URL = "https://oblakovpn.org:8000"
+MARZBAN_URL = "https://el-vpn.ru:443"
 
 # Prometheus metrics
 online_users_gauge = Gauge('marzban_online_users', 'Number of currently online users in Marzban')
