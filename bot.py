@@ -1275,9 +1275,9 @@ def generate_auto_config_link(user_id, app_name):
         
         # Generate redirect URL based on app
         if app_name.lower() == "v2raytun":
-            return f"http://147.45.70.214:5000/redirect-v2raytun?url={subscription_url}"
+            return f"http://147.45.70.214:80/redirect-v2raytun?url={subscription_url}"
         elif app_name.lower() == "hiddify":
-            return f"http://147.45.70.214:5000/redirect-hiddify?url={subscription_url}"
+            return f"http://147.45.70.214:80/redirect-hiddify?url={subscription_url}"
         
         return None
     except Exception as e:
