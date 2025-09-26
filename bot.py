@@ -1061,6 +1061,7 @@ def start(message):
     inline_markup = types.InlineKeyboardMarkup()
     subscribe_button = types.InlineKeyboardButton('📢 Подписаться на канал', url=CHANNEL_LINK)
     get_config_button = types.InlineKeyboardButton('🔑 Получить конфигурацию', callback_data='get_config')
+    auto_config_button = types.InlineKeyboardButton('⚙️ Авто-настройка', callback_data='auto_config')
     select_device_button = types.InlineKeyboardButton('📱 Скачать приложение', callback_data='select_device')
     payment_button = types.InlineKeyboardButton('💳 Оплатить подписку', callback_data='payment')
     check_days_button = types.InlineKeyboardButton('⏳ Проверить остаток дней', callback_data='check_days')
