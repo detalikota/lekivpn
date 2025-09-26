@@ -1068,6 +1068,7 @@ def start(message):
     help_button_inline = types.InlineKeyboardButton('❓ Помощь', callback_data='help')
     inline_markup.add(subscribe_button)
     inline_markup.add(get_config_button)
+    inline_markup.add(auto_config_button)
     inline_markup.add(select_device_button)
     inline_markup.add(payment_button)
     inline_markup.add(check_days_button)
