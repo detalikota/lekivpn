@@ -839,6 +839,7 @@ def extend_subscription(username):
     logger.info(f"Attempting to extend subscription for user {username}")
     max_retries = 3
     retry_count = 0
+
     while retry_count < max_retries:
         try:
             logger.info(f"Getting Marzban token for subscription extension (attempt {retry_count+1}/{max_retries})")
@@ -848,19 +849,18 @@ def extend_subscription(username):
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json"
             }
-
+            
+            # Get current user data
             logger.info(f"Fetching current user data for {username}")
             current_user = get_user_config(username)
             if "error" in current_user:
                 logger.error(f"Error getting user data for {username}: {current_user['error']}")
                 return {"error": current_user["error"]}
-
             if not current_user or "username" not in current_user:
                 logger.error(f"User {username} not found or invalid response from API: {current_user}")
                 return {"error": "User not found"}
-
             logger.info(f"Current user data for {username}: status={current_user.get('status')}, "
-                        f"expire={current_user.get('expire')}, data_limit={current_user.get('data_limit')}")
+                       f"expire={current_user.get('expire')}, data_limit={current_user.get('data_limit')}")
 
             current_time = int(time.time())
             current_expire = current_user.get("expire", 0)
@@ -873,8 +873,8 @@ def extend_subscription(username):
             if current_expire > current_time:
                 new_expire = current_expire + (30 * 24 * 3600)
                 logger.info(f"Extending active subscription for {username} from {current_expire} "
-                           f"({datetime.fromtimestamp(current_expire).strftime('%Y-%m-%d %H:%M:%S')}) "
-                           f"to {new_expire} ({datetime.fromtimestamp(new_expire).strftime('%Y-%m-%d %H:%M:%S')})")
+                          f"({datetime.fromtimestamp(current_expire).strftime('%Y-%m-%d %H:%M:%S')}) "
+                          f"to {new_expire} ({datetime.fromtimestamp(new_expire).strftime('%Y-%m-%d %H:%M:%S')})")
             else:
                 new_expire = current_time + (30 * 24 * 3600)
                 logger.info(f"Starting new subscription period for {username} from now until {new_expire} "

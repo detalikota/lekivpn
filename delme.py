@@ -1053,19 +1053,14 @@ def extend_subscription(username):
             if "error" in current_user:
                 logger.error(f"Error getting user data for {username}: {current_user['error']}")
                 return {"error": current_user["error"]}
-            
             if not current_user or "username" not in current_user:
                 logger.error(f"User {username} not found or invalid response from API: {current_user}")
                 return {"error": "User not found"}
-            
             logger.info(f"Current user data for {username}: status={current_user.get('status')}, "
                        f"expire={current_user.get('expire')}, data_limit={current_user.get('data_limit')}")
-            
-            # Calculate new expiration date
+
             current_time = int(time.time())
             current_expire = current_user.get("expire", 0)
-            
-            # Ensure current_expire is an integer
             if current_expire is None:
                 logger.warning(f"User {username} has None expiry - treating as 0")
                 current_expire = 0
