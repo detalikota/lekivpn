@@ -405,12 +405,12 @@ def apply_subscription_extension(user_id, payment_id):
         is_yearly = False
         days_to_add = 0
         subscription_type = "eternal"
-    elif amount_value >= 599.0:
+    elif amount_value >= 699.0:
         is_eternal = False
         is_yearly = True
         days_to_add =  365
         subscription_type = "yearly"
-    elif amount_value >= 299.0:
+    elif amount_value >= 399.0:
         is_eternal = False
         is_yearly = False
         days_to_add = 180  # 6 months
@@ -1501,15 +1501,15 @@ def callback_handler(call):
                     url=payment_3m["confirmation_url"]
                 )
 
-                payment_6m = create_payment(call.from_user.id, "299.00")
+                payment_6m = create_payment(call.from_user.id, "399.00")
                 pay_6m_button = types.InlineKeyboardButton(
-                    '💳 6 месяцев - 299₽',
+                    '💳 6 месяцев - 399₽',
                     url=payment_6m["confirmation_url"]
                 )
 
-                payment_12m = create_payment(call.from_user.id, "599.00")
+                payment_12m = create_payment(call.from_user.id, "699.00")
                 pay_12m_button = types.InlineKeyboardButton(
-                    '💳 12 месяцев - 599₽',
+                    '💳 12 месяцев - 699₽',
                     url=payment_12m["confirmation_url"]
                 )
 
@@ -1531,8 +1531,8 @@ def callback_handler(call):
                     "💫 _VPN подписка_\n\n"
                     "💰 1 месяц: 99 ₽\n"
                     "💰 3 месяца: 199 ₽\n"
-                    "💰 6 месяцев: 299 ₽\n"
-                    "💰 12 месяцев: 599 ₽\n\n"
+                    "💰 6 месяцев: 399 ₽\n"
+                    "💰 12 месяцев: 699 ₽\n\n"
                     "✨ Включено:\n"
                     "   • Безлимитный трафик\n"
                     "   • Высокая скорость\n"
