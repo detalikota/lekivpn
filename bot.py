@@ -51,8 +51,8 @@ Configuration.secret_key = YUKASSA_API
 bot = telebot.TeleBot(API_TOKEN)
 
 # Marzban settings
-MARZBAN_URL = "https://el-vpn.ru"
-CHANNEL_LINK = "https://t.me/el_vpn_channel"
+MARZBAN_URL = "https://lekivpn.ru"
+CHANNEL_LINK = "https://t.me/lekivpn"
 
 # Thread-safe notification tracker
 app = Flask(__name__)
@@ -105,7 +105,7 @@ def generate_referral_link(user_id):
     """Generate a referral link for a user."""
     import base64
     encoded_id = base64.b64encode(str(user_id).encode()).decode()
-    return f"https://t.me/ell_vpn_bot?start=ref_{encoded_id}"
+    return f"https://t.me/leki_vpn_bot?start=ref_{encoded_id}"
 
 def decode_referral_code(code):
     """Decode referral code to get user ID."""
@@ -344,7 +344,7 @@ def create_payment(user_id, amount="99.00"):
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": f"https://t.me/ell_vpn_bot"
+                "return_url": f"https://t.me/leki_vpn_bot"
             },
             "capture": True,
             "description": f"Оплата подписки доступа к сервису для пользователя с ID: {user_id}",
@@ -1121,7 +1121,7 @@ def help_menu(message):
     markup = types.InlineKeyboardMarkup()
     video_instruction_button = types.InlineKeyboardButton('🎥 Видео инструкция', callback_data='video_instruction')
     vpn_not_working_button = types.InlineKeyboardButton('🚫 Не работает VPN?', callback_data='vpn_not_working')
-    contact_us_button = types.InlineKeyboardButton('📞 Связаться с нами', url='https://t.me/el_vpn_channel?direct')
+    contact_us_button = types.InlineKeyboardButton('📞 Связаться с нами', url='https://t.me/lekivpn?direct')
     close_button = types.InlineKeyboardButton('❌ Закрыть', callback_data='close')
     markup.add(video_instruction_button)
     markup.add(vpn_not_working_button)
@@ -1277,9 +1277,9 @@ def generate_auto_config_link(user_id, app_name):
         
         # Generate redirect URL based on app
         if app_name.lower() == "v2raytun":
-            return f"http://147.45.70.214:80/redirect-v2raytun?url={subscription_url}"
+            return f"http://77.110.103.189:80/redirect-v2raytun?url={subscription_url}"
         elif app_name.lower() == "hiddify":
-            return f"http://147.45.70.214:80/redirect-hiddify?url={subscription_url}"
+            return f"http://77.110.103.189:80/redirect-hiddify?url={subscription_url}"
         
         return None
     except Exception as e:
@@ -1711,7 +1711,7 @@ def callback_handler(call):
                 bot.send_message(call.message.chat.id, "❌ Видео инструкция для Windows не найдена.")
         elif call.data == 'vpn_not_working':
             markup = types.InlineKeyboardMarkup()
-            contact_us_button = types.InlineKeyboardButton('📞 Связаться с нами', url='https://t.me/el_vpn_channel?direct')
+            contact_us_button = types.InlineKeyboardButton('📞 Связаться с нами', url='https://t.me/lekivpn?direct')
             close_button = types.InlineKeyboardButton('❌ Закрыть', callback_data='close')
             markup.add(contact_us_button)
             markup.add(close_button)
@@ -1734,7 +1734,7 @@ def callback_handler(call):
             markup = types.InlineKeyboardMarkup()
             video_instruction_button = types.InlineKeyboardButton('🎥 Видео инструкция', callback_data='video_instruction')
             vpn_not_working_button = types.InlineKeyboardButton('🚫 Не работает VPN?', callback_data='vpn_not_working')
-            contact_us_button = types.InlineKeyboardButton('📞 Связаться с нами', url='https://t.me/el_vpn_channel?direct')
+            contact_us_button = types.InlineKeyboardButton('📞 Связаться с нами', url='https://t.me/lekivpn?direct')
             markup.add(video_instruction_button)
             markup.add(vpn_not_working_button)
             markup.add(contact_us_button)
