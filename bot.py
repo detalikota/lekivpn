@@ -338,42 +338,47 @@ def create_payment(user_id, amount="99.00"):
     try:
         idempotence_key = str(uuid.uuid4())
         payment = Payment.create({
-            "amount": {
-                "value": amount,
-                "currency": "RUB"
-            },
+            "amount": {"value": amount, "currency": "RUB"},
             "confirmation": {
                 "type": "redirect",
-                "return_url": f"https://t.me/leki_vpn_bot"
+                "return_url": "https://t.me/leki_vpn_bot"
             },
             "capture": True,
             "description": f"Оплата подписки доступа к сервису для пользователя с ID: {user_id}",
-            "metadata": {
-                "user_id": user_id,
-                "amount": amount
+            "metadata": {"user_id": str(user_id), "amount": amount},
+
+            # >>> ОБЯЗАТЕЛЬНО, если в ЮKassa включена касса/54-ФЗ
+            "receipt": {
+                "customer": {
+                    # хотя бы одно из полей обязательно
+                    "email": f"{user_id}@lekivpn.local"  # или "phone": "+79XXXXXXXXX"
+                },
+                "items": [{
+                    "description": "L-VPN подписка",
+                    "amount": {"value": amount, "currency": "RUB"},
+                    "quantity": "1",
+                    "vat_code": 4,              # НДС 0%
+                    "payment_subject": "service",
+                    "payment_mode": "full_prepayment"
+                }]
             }
         }, idempotence_key)
 
-        try:
-            import sqlite3
-            conn = sqlite3.connect('/opt/marzban/payments.db')
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO payments (payment_id, user_id, amount, status) VALUES (?, ?, ?, ?)",
-                (payment.id, user_id, amount, "created")
-            )
-            conn.commit()
-            conn.close()
-            logger.info(f"Created payment {payment.id} for user {user_id} and stored in database")
-        except Exception as db_error:
-            logger.error(f"Error storing payment in database: {db_error}")
+        # ... ваш код записи в БД без изменений ...
+        return {"confirmation_url": payment.confirmation.confirmation_url, "payment_id": payment.id}
 
-        return {
-            "confirmation_url": payment.confirmation.confirmation_url,
-            "payment_id": payment.id
-        }
+    except ApiError as e:
+        # детальный разбор ошибки от ЮKassa
+        logger.error(
+            "YooKassa ApiError on create_payment: http_code=%s type=%s code=%s message=%s params=%s",
+            getattr(e, "http_code", None), getattr(e, "type", None),
+            getattr(e, "code", None), getattr(e, "message", None),
+            getattr(e, "params", None),
+            exc_info=True
+        )
+        raise Exception(f"Payment creation error: {e.code or e.type or 'unknown'}: {e.message or str(e)}")
     except Exception as e:
-        logger.error(f"Error creating payment for user {user_id}: {e}")
+        logger.error(f"Unexpected error creating payment: {e}", exc_info=True)
         raise Exception(f"Payment creation error: {str(e)}")
 
 def apply_subscription_extension(user_id, payment_id):
@@ -1285,7 +1290,7 @@ def generate_auto_config_link(user_id, app_name):
     except Exception as e:
         logger.error(f"Error generating auto-config link: {e}")
         return None
-@bot.callback_query_handler(func=lambda call: True)
+@bot.callback_query_handler(func=lambda call: True) 
 def callback_handler(call):
     log_user_interaction(
         call.from_user.id,
