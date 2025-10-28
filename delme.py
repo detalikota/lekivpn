@@ -9,7 +9,7 @@ def create_payment(user_id, amount="99.00"):
             "amount": {"value": amount, "currency": "RUB"},
             "confirmation": {
                 "type": "redirect",
-                "return_url": "https://t.me/leki_vpn_bot"
+                "return_url": "https://t.me/VPN_LEKI_bot" 
             },
             "capture": True,
             "description": f"Оплата подписки доступа к сервису для пользователя с ID: {user_id}",
